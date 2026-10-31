@@ -79,6 +79,25 @@
   [data-theme="light"] pre code{color:#0f172a}
   [data-theme="light"] .chip.active{background:#0284c7;color:#ffffff}
   [data-theme="light"] .mini,[data-theme="light"] .card,[data-theme="light"] .step{box-shadow:0 10px 30px rgba(15,23,42,.06)}
+
+  /* 网格纸面背景：截图那种细网格，深色/浅色分别适配 */
+  body{background-image:linear-gradient(to right,rgba(148,163,184,.10) 1px,transparent 1px),linear-gradient(to bottom,rgba(148,163,184,.10) 1px,transparent 1px),radial-gradient(900px 480px at 15% -10%,rgba(56,189,248,.22),transparent 60%),radial-gradient(800px 420px at 90% 0,rgba(167,139,250,.20),transparent 60%);background-size:32px 32px,32px 32px,auto,auto;background-color:var(--bg)}
+  [data-theme="light"] body{background-image:linear-gradient(to right,rgba(15,23,42,.055) 1px,transparent 1px),linear-gradient(to bottom,rgba(15,23,42,.055) 1px,transparent 1px),radial-gradient(900px 480px at 15% -10%,rgba(56,189,248,.14),transparent 60%),radial-gradient(800px 420px at 90% 0,rgba(167,139,250,.12),transparent 60%);background-size:32px 32px,32px 32px,auto,auto}
+  /* 细节美化：截图那种柔和白卡阴影、圆角细边、悬停与聚焦反馈 */
+  .card,.mini,.step,.panel{box-shadow:0 1px 2px rgba(15,23,42,.05),0 12px 32px rgba(15,23,42,.08)}
+  [data-theme="light"] .card,[data-theme="light"] .mini,[data-theme="light"] .step,[data-theme="light"] .panel{box-shadow:0 1px 2px rgba(15,23,42,.04),0 12px 32px rgba(15,23,42,.07)}
+  .card:hover{border-color:rgba(56,189,248,.45)}
+  .btn{transition:transform .15s ease,box-shadow .15s ease,filter .15s ease}
+  .btn:hover{filter:brightness(1.06)} .btn:active{transform:translateY(1px)}
+  .btn-primary{box-shadow:0 8px 20px rgba(56,189,248,.30)}
+  select,input,textarea{transition:border-color .15s ease,box-shadow .15s ease}
+  select:focus,input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(56,189,248,.22)}
+  .chip{transition:all .15s ease} .chip:hover{border-color:rgba(56,189,248,.5);color:var(--text)}
+  .pill{backdrop-filter:blur(6px)}
+  .basebar{box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 28px rgba(15,23,42,.07)}
+  .hero h1{letter-spacing:-.8px} h2{letter-spacing:-.2px}
+  pre{box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+  .endpoint-name{letter-spacing:.2px}
 </style>
 </head>
 <body>
