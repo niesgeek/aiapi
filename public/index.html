@@ -226,8 +226,30 @@ const ENDPOINTS = [
   ["midjourney","https://api.midjourney.com","多模态","/"],
   ["discord","https://discord.com/api","社交","/v10/users/@me"],
   ["telegram","https://api.telegram.org","社交","/bot<token>/getMe"],
+["qwen","https://dashscope.aliyuncs.com/compatible-mode/v1","国产","/models"],
+  ["doubao","https://ark.cn-beijing.volces.com/api/v3","国产","/models"],
+  ["hunyuan","https://api.hunyuan.cloud.tencent.com/v1","国产","/models"],
+  ["minimax","https://api.minimax.chat/v1","国产","/models"],
+  ["stepfun","https://api.stepfun.com/v1","国产","/models"],
+  ["baichuan","https://api.baichuan-ai.com/v1","国产","/models"],
+  ["spark","https://spark-api-open.xf-yun.com/v1","国产","/models"],
+  ["qianfan","https://qianfan.baidubce.com/v2","国产","/models"],
+  ["deepinfra","https://api.deepinfra.com/v1/openai","聚合","/models"],
+  ["nebius","https://api.studio.nebius.com/v1","聚合","/models"],
+  ["sambanova","https://api.sambanova.ai/v1","聚合","/models"],
+  ["hyperbolic","https://api.hyperbolic.xyz/v1","聚合","/models"],
+  ["chutes","https://llm.chutes.ai/v1","聚合","/models"],
+  ["llama","https://api.llama.com/compat/v1","主流","/models"],
+  ["fal","https://fal.run","多模态","/fal-ai/flux/dev"],
+  ["runway","https://api.dev.runwayml.com","多模态","/v1/text_to_video"],
+  ["luma","https://agents.lumalabs.ai/v1","多模态","/generations"],
+  ["ideogram","https://api.ideogram.ai","多模态","/v2/image/generate/ideogram-4-5"],
+  ["bfl","https://api.bfl.ai","多模态","/v1/flux-2-pro-preview"],
+  ["deepgram","https://api.deepgram.com","多模态","/v1/models"],
+  ["jina","https://api.jina.ai","搜索","/v1/embeddings"],
+  ["tavily","https://api.tavily.com","搜索","/search"],
 ];
-const CATS = ["全部","主流","国产","聚合","开源","多模态","社交"];
+const CATS = ["全部","主流","国产","聚合","开源","多模态","搜索","社交"];
 let activeCat = "全部", activeTab = "curl";
 const $ = id => document.getElementById(id);
 let origin = location.protocol.startsWith("http") ? location.origin.replace(/\/$/,"") : "https://your-worker.workers.dev";

@@ -49,7 +49,36 @@ const apiMapping = {
   '/voyage': 'https://api.voyageai.com',
   '/midjourney': 'https://api.midjourney.com',
   '/discord': 'https://discord.com/api',
-  '/telegram': 'https://api.telegram.org'
+  '/telegram': 'https://api.telegram.org',
+// --- 新增：国产大模型（OpenAI 兼容） ---
+  '/qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  '/doubao': 'https://ark.cn-beijing.volces.com/api/v3',
+  '/hunyuan': 'https://api.hunyuan.cloud.tencent.com/v1',
+  '/minimax': 'https://api.minimax.chat/v1',
+  '/stepfun': 'https://api.stepfun.com/v1',
+  '/baichuan': 'https://api.baichuan-ai.com/v1',
+  '/spark': 'https://spark-api-open.xf-yun.com/v1',
+  '/qianfan': 'https://qianfan.baidubce.com/v2',
+
+  // --- 新增：聚合 & 开源推理（OpenAI 兼容） ---
+  '/deepinfra': 'https://api.deepinfra.com/v1/openai',
+  '/nebius': 'https://api.studio.nebius.com/v1',
+  '/sambanova': 'https://api.sambanova.ai/v1',
+  '/hyperbolic': 'https://api.hyperbolic.xyz/v1',
+  '/chutes': 'https://llm.chutes.ai/v1',
+  '/llama': 'https://api.llama.com/compat/v1',
+
+  // --- 新增：多模态（图像/视频/语音） ---
+  '/fal': 'https://fal.run',
+  '/runway': 'https://api.dev.runwayml.com',
+  '/luma': 'https://agents.lumalabs.ai/v1',
+  '/ideogram': 'https://api.ideogram.ai',
+  '/bfl': 'https://api.bfl.ai',
+  '/deepgram': 'https://api.deepgram.com',
+
+  // --- 新增：搜索 & 向量 ---
+  '/jina': 'https://api.jina.ai',
+  '/tavily': 'https://api.tavily.com',
 };
 
 const corsHeaders = {
