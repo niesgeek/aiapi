@@ -141,14 +141,23 @@
   <p class="note" id="empty" style="display:none">没有匹配的端点，换个关键词试试。</p>
 
   <h2 id="playground">在线测试</h2>
-  <p class="sub">先在上游官网申请 Key，再在这里发一次真实请求验证链路。只建议用只读接口（如 <code>/v1/models</code>）做连通性测试。</p>
+  <p class="sub">先在上游官网申请 Key，再在这里发一次真实请求验证链路。只建议用只读接口（如 <code>/v1/models</code>）做连通性测试。切到“自定义地址”，还能测本站未收录的地址，比如你自己的 newapi 站。</p>
   <div class="panel">
+    <div class="tabs" style="margin:0 0 14px">
+      <button class="tab active" id="modeEndpointBtn" onclick="setTestMode('endpoint')">本站端点</button>
+      <button class="tab" id="modeCustomBtn" onclick="setTestMode('custom')">自定义地址</button>
+    </div>
     <div class="form">
-      <div><label>选择端点</label><select id="provider"></select></div>
+      <div id="endpointProviderWrap"><label>选择端点</label><select id="provider"></select></div>
       <div><label>请求方法</label>
         <select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
       </div>
-      <div class="full"><label>路径（接在端点后面，例如 /v1/models 或 /v1/chat/completions）</label><input id="path" value="/v1/models"></div>
+      <div class="full" id="endpointPathWrap"><label>路径（接在端点后面，例如 /v1/models 或 /v1/chat/completions）</label><input id="path" value="/v1/models"></div>
+      <div class="full" id="customUrlWrap" style="display:none"><label>自定义完整地址（须以 https:// 开头，例如你自己的 newapi 站）</label><input id="customUrl" placeholder="https://your-newapi.example.com/v1/models" autocomplete="off"></div>
+      <div class="full" id="customViaWrap" style="display:none"><label>自定义地址怎么发</label>
+        <select id="customVia"><option value="proxy">经本站 /proxy 转发（默认，绕过浏览器 CORS）</option><option value="direct">浏览器直连目标（目标须自己允许 CORS）</option></select>
+        <p class="note" style="margin:8px 0 0">经 /proxy 转发时，Key 仍只随本次请求转发到目标，不存本站；ssrf 分支下目标域名须先在 PROXY_ALLOWED_HOSTS 白名单里，否则返回 403。直连时若目标不允许 CORS，浏览器会直接拦住请求，那不代表目标挂了。</p>
+      </div>
       <div class="full"><label>API Key（仅本次浏览器会话使用，不会上传到本站存储）</label><input id="apiKey" type="password" placeholder="sk-… / Bearer token / 各厂商自己的 Key 格式" autocomplete="off"></div>
       <div class="full"><label>网关密钥 x-proxy-key（ssrf 分支必填，仅本次浏览器会话使用）</label><input id="proxyKey" type="password" placeholder="你在 Worker 里设置的 PROXY_KEY" autocomplete="off"></div>
       <div class="full"><label>请求体 JSON（GET 可留空）</label><textarea id="body" placeholder='{"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "hi"}]}'></textarea></div>
@@ -291,11 +300,29 @@ function render(){
 function fillProviders(){
   $("provider").innerHTML = ENDPOINTS.map(([p])=>`<option value="${p}">/${p}</option>`).join("");
 }
+let testMode = "endpoint";
+function setTestMode(mode){
+  testMode = mode;
+  $("modeEndpointBtn").classList.toggle("active", mode==="endpoint");
+  $("modeCustomBtn").classList.toggle("active", mode==="custom");
+  $("endpointProviderWrap").style.display = mode==="endpoint" ? "" : "none";
+  $("endpointPathWrap").style.display = mode==="endpoint" ? "" : "none";
+  $("customUrlWrap").style.display = mode==="custom" ? "" : "none";
+  $("customViaWrap").style.display = mode==="custom" ? "" : "none";
+  updateSnippet();
+}
 function fullUrl(){
+  if(testMode==="custom"){
+    const u = $("customUrl").value.trim();
+    if(!u) return origin + "/proxy?url=";
+    if($("customVia").value==="direct") return u;
+    return origin + "/proxy?url=" + encodeURIComponent(u);
+  }
   const p = $("provider").value, path = $("path").value.trim() || "/";
   return origin + "/" + p + (path.startsWith("/") ? path : "/" + path);
 }
 function useEndpoint(p,ex){
+  setTestMode("endpoint");
   $("provider").value = p; $("path").value = ex; updateSnippet();
   document.getElementById("playground").scrollIntoView({behavior:"smooth"});
 }
@@ -321,12 +348,24 @@ function setTab(t,btn){
 async function sendTest(){
   const btn = $("sendBtn"); btn.disabled = true; btn.textContent = "发送中…";
   const started = performance.now();
+  if(testMode==="custom"){
+    const u = $("customUrl").value.trim();
+    let ok = false;
+    try{ ok = u && new URL(u).protocol === "https:"; }catch{ ok = false; }
+    if(!ok){
+      $("statusBadge").textContent = "地址无效"; $("statusBadge").className = "badge bad";
+      $("timeBadge").textContent = "—"; $("sizeBadge").textContent = "—";
+      $("result").textContent = "自定义地址须填一个以 https:// 开头的完整地址，例如 https://your-newapi.example.com/v1/models";
+      btn.disabled = false; btn.textContent = "发送请求"; return;
+    }
+  }
   try{
     const headers = {"Content-Type":"application/json"};
     const key = $("apiKey").value.trim();
     if(key) headers["Authorization"] = key.startsWith("Bearer ") ? key : "Bearer " + key;
     const proxyKey = $("proxyKey").value.trim();
-    if(proxyKey) headers["x-proxy-key"] = proxyKey;
+    const viaGateway = testMode!=="custom" || $("customVia").value==="proxy";
+    if(proxyKey && viaGateway) headers["x-proxy-key"] = proxyKey;
     const opts = {method:$("method").value, headers};
     if($("method").value!=="GET" && $("body").value.trim()) opts.body = $("body").value.trim();
     const res = await fetch(fullUrl(), opts);
@@ -355,8 +394,8 @@ async function checkHealth(){
     $("healthText").textContent = "无法连接网关（本地预览时正常）";
   }
 }
-["provider","method","path","body"].forEach(id=>$(id).addEventListener("input", updateSnippet));
-["provider","method"].forEach(id=>$(id).addEventListener("change", updateSnippet));
+["provider","method","path","body","customUrl"].forEach(id=>$(id).addEventListener("input", updateSnippet));
+["provider","method","customVia"].forEach(id=>$(id).addEventListener("change", updateSnippet));
 
 function applyTheme(mode){
   document.documentElement.setAttribute("data-theme", mode);
