@@ -101,6 +101,10 @@
   .hero h1{letter-spacing:-.8px} h2{letter-spacing:-.2px}
   pre{box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
   .endpoint-name{letter-spacing:.2px}
+.gotop{position:fixed;right:20px;bottom:20px;z-index:50;width:48px;height:48px;border-radius:50%;border:1px solid var(--line);background:linear-gradient(135deg,#38bdf8,#818cf8);color:#06121f;font-size:20px;font-weight:800;cursor:pointer;box-shadow:0 10px 30px rgba(56,189,248,.35);display:none;place-items:center}
+  .gotop.show{display:grid}
+  .gotop:hover{filter:brightness(1.08)}
+  @media(max-width:560px){.gotop{right:14px;bottom:14px;width:44px;height:44px}}
 </style>
 </head>
 <body>
@@ -647,8 +651,11 @@ function toggleTheme(){
   applyTheme(mode === "light" ? "light" : "dark");
 })();
 renderCats(); render(); fillProviders(); fillBatchProviders(); batchModeChanged(); updateSnippet(); checkHealth();
+function goTop(){ const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; window.scrollTo({top:0, behavior: reduced ? "auto" : "smooth"}); }
+window.addEventListener("scroll", () => { const b = $("gotop"); if(b) b.classList.toggle("show", window.scrollY > 600); }, {passive:true});
 $("batchProvider").addEventListener("change", () => { batchProviderChanged(); });
 $("batchMode").addEventListener("change", batchModeChanged);
 </script>
+<button id="gotop" class="gotop" onclick="goTop()" aria-label="回到顶部" title="回到顶部">↑</button>
 </body>
 </html>
