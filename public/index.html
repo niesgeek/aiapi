@@ -80,6 +80,9 @@
   [data-theme="light"] .chip.active{background:#0284c7;color:#ffffff}
   [data-theme="light"] .mini,[data-theme="light"] .card,[data-theme="light"] .step{box-shadow:0 10px 30px rgba(15,23,42,.06)}
 
+.batch-table{width:100%;border-collapse:collapse;font-size:13px}
+  .batch-table th,.batch-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-all}
+  .batch-table th{color:var(--muted);white-space:nowrap}
   /* 网格纸面背景：截图那种细网格，深色/浅色分别适配 */
   body{background-image:linear-gradient(to right,rgba(148,163,184,.10) 1px,transparent 1px),linear-gradient(to bottom,rgba(148,163,184,.10) 1px,transparent 1px),radial-gradient(900px 480px at 15% -10%,rgba(56,189,248,.22),transparent 60%),radial-gradient(800px 420px at 90% 0,rgba(167,139,250,.20),transparent 60%);background-size:32px 32px,32px 32px,auto,auto;background-color:var(--bg)}
   [data-theme="light"] body{background-image:linear-gradient(to right,rgba(15,23,42,.055) 1px,transparent 1px),linear-gradient(to bottom,rgba(15,23,42,.055) 1px,transparent 1px),radial-gradient(900px 480px at 15% -10%,rgba(56,189,248,.14),transparent 60%),radial-gradient(800px 420px at 90% 0,rgba(167,139,250,.12),transparent 60%);background-size:32px 32px,32px 32px,auto,auto}
@@ -107,6 +110,7 @@
     <div class="row">
       <span class="pill"><i class="dot" id="healthDot"></i><span id="healthText">正在检测网关…</span></span>
       <a class="pill" href="#playground" style="text-decoration:none;color:inherit">在线测试 →</a>
+      <a class="pill" href="#batch" style="text-decoration:none;color:inherit">批量检测 →</a>
       <button class="pill" id="themeBtn" onclick="toggleTheme()" style="cursor:pointer;background:var(--card);color:var(--text)">☀️ 切换白天</button>
     </div>
   </div>
@@ -183,6 +187,36 @@
       <button class="btn btn-ghost btn-sm" onclick="copyText(document.getElementById('result').textContent,this)">复制响应</button>
     </div>
     <pre><code id="result">还没发送请求。建议先用 GET /v1/models 验证 Key 和链路是否通。</code></pre>
+  </div>
+
+<h2 id="batch">批量 Key 检测</h2>
+  <p class="sub">一次测多个 Key。思路参考 <code>ssfun/llm-api-key-checker</code>（MIT），但本站版本是纯浏览器端实现，不经过额外后端、不存 Key，刷新页面即清。只建议测你自己的 Key。</p>
+  <div class="panel">
+    <div class="form">
+      <div><label>检测目标</label><select id="batchProvider"></select></div>
+      <div><label>检测方式</label><select id="batchMode"><option value="fast">快速：模型列表 + 余额（不花 tokens）</option><option value="chat">实测对话：chat/completions，16 tokens（会花少量额度）</option></select></div>
+      <div class="full" id="batchCustomWrap" style="display:none"><label>自定义地址 base（须以 https:// 开头，例如 https://your-newapi.example.com/v1）</label><input id="batchCustomBase" placeholder="https://your-newapi.example.com/v1" autocomplete="off"></div>
+      <div class="full" id="batchCustomViaWrap" style="display:none"><label>自定义地址怎么发</label><select id="batchCustomVia"><option value="proxy">经本站 /proxy 转发（默认，绕过 CORS）</option><option value="direct">浏览器直连目标（目标须自己允许 CORS）</option></select></div>
+      <div class="full" id="batchNewApiWrap" style="display:none"><label><input type="checkbox" id="batchNewApiBalance" checked style="width:auto"> 自定义目标是 NewApi 站，额外查 /api/usage/token 余额</label></div>
+      <div><label>并发数</label><select id="batchConc"><option>1</option><option selected>3</option><option>5</option><option>10</option></select></div>
+      <div><label>低额阈值（余额低于此值判低额）</label><input id="batchLow" type="number" value="1" min="0" step="0.5"></div>
+      <div class="full" id="batchModelWrap" style="display:none"><label>实测模型（实测模式必填）</label><input id="batchModel" placeholder="例如 gpt-4o-mini / 你 newapi 里的模型名" autocomplete="off"></div>
+      <div class="full"><label>API Keys（一行一个，也支持逗号、分号、空格分隔；可导入 .txt）</label><textarea id="batchKeys" placeholder="sk-...&#10;sk-..."></textarea></div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn btn-primary" id="batchStartBtn" onclick="startBatch()">开始检测</button>
+      <button class="btn btn-ghost" id="batchPauseBtn" onclick="toggleBatchPause()" disabled>暂停</button>
+      <button class="btn btn-ghost" id="batchStopBtn" onclick="stopBatch()" disabled>停止</button>
+      <button class="btn btn-ghost" onclick="exportBatch('valid')">导出有效 Key</button>
+      <button class="btn btn-ghost" onclick="exportBatch('csv')">导出 CSV</button>
+      <button class="btn btn-ghost" onclick="copyBatchValid(this)">复制有效 Key</button>
+      <label class="btn btn-ghost" style="cursor:pointer">导入 .txt<input type="file" id="batchFile" accept=".txt,text/plain" style="display:none" onchange="importBatchFile(this)"></label>
+      <button class="btn btn-ghost" onclick="clearBatch()">清空结果</button>
+    </div>
+    <div class="row" style="margin-top:12px"><span class="badge" id="batchProgress">未开始</span><span class="note" id="batchCounts"></span></div>
+    <div class="row" id="batchFilters" style="margin-top:12px"></div>
+    <div style="overflow:auto;margin-top:12px"><table class="batch-table"><thead><tr><th>#</th><th>Key（已脱敏）</th><th>状态</th><th>余额</th><th>模型数</th><th>耗时</th><th>详情</th></tr></thead><tbody id="batchRows"></tbody></table></div>
+    <p class="note" style="margin-top:12px">注意：快速模式用模型列表判断有效性，不花 tokens；实测模式每个 Key 会真实调用一次对话（16 tokens），chat 路径按模型列表路径推导，个别聚合商路径不同时 404 / 模型不可用不等于 Key 无效，请看详情。ssrf 分支下自定义目标须在 PROXY_ALLOWED_HOSTS 白名单里，直连模式不带网关密钥。</p>
   </div>
 
   <h2>三步接入</h2>
@@ -394,6 +428,205 @@ async function checkHealth(){
     $("healthText").textContent = "无法连接网关（本地预览时正常）";
   }
 }
+/* ---- 批量 Key 检测（思路参考 ssfun/llm-api-key-checker，浏览器端实现） ---- */
+const BATCH_STATUSES = ["valid","low","zero","noquota","rate","invalid","duplicate","error"];
+const BATCH_LABEL = {valid:"有效",low:"低额",zero:"零额",noquota:"无额",rate:"限流",invalid:"无效",duplicate:"重复",error:"错误",pending:"待检测"};
+const BATCH_BALANCE = {
+  openrouter: {path:"/v1/credits", parse: d => (d.data?.total_credits ?? 0) - (d.data?.total_usage ?? 0)},
+  siliconflow: {path:"/v1/user/info", parse: d => parseFloat(d.data?.balance)},
+  deepseek: {path:"/user/balance", parse: d => { const a = d.balance_infos || []; const i = a.find(b=>b.currency==="USD") || a.find(b=>b.currency==="CNY") || a[0]; return i ? parseFloat(i.total_balance) : NaN; }},
+  moonshot: {path:"/v1/users/me/balance", parse: d => parseFloat(d.data?.available_balance)},
+};
+let batchItems = [], batchRunning = false, batchPaused = false, batchStopped = false, batchFilter = "all", batchDone = 0;
+function maskKey(k){ return k.length <= 8 ? "****" : k.slice(0,4) + "****" + k.slice(-4); }
+function batchGatewayKey(){ const el = document.getElementById("proxyKey"); return el ? el.value.trim() : ""; }
+function batchViaGateway(){ return $("batchProvider").value !== "__custom" || $("batchCustomVia").value === "proxy"; }
+function batchHeaders(key, provider){
+  const h = {"Content-Type":"application/json"};
+  if(provider === "claude"){ h["x-api-key"] = key; h["anthropic-version"] = "2023-06-01"; }
+  else if(provider === "gemini"){ /* key 走 ?key= 查询参数，不带 Authorization */ }
+  else h["Authorization"] = key.startsWith("Bearer ") ? key : "Bearer " + key;
+  const pk = batchGatewayKey();
+  if(pk && batchViaGateway()) h["x-proxy-key"] = pk;
+  return h;
+}
+function batchUrl(path){
+  if($("batchProvider").value === "__custom"){
+    const base = $("batchCustomBase").value.trim().replace(/\/$/,"");
+    const full = base + (path.startsWith("/") ? path : "/" + path);
+    return $("batchCustomVia").value === "direct" ? full : origin + "/proxy?url=" + encodeURIComponent(full);
+  }
+  return origin + "/" + $("batchProvider").value + path;
+}
+function batchModelsPath(){
+  if($("batchProvider").value === "__custom") return "/models";
+  const e = ENDPOINTS.find(([p]) => p === $("batchProvider").value);
+  return e ? e[3] : "/v1/models";
+}
+function fillBatchProviders(){
+  const list = ENDPOINTS.filter(([, , , ex]) => ex.includes("models"));
+  $("batchProvider").innerHTML = list.map(([p]) => `<option value="${p}">/${p}</option>`).join("") + `<option value="__custom">自定义地址…</option>`;
+  batchProviderChanged();
+}
+function batchProviderChanged(){
+  const custom = $("batchProvider").value === "__custom";
+  $("batchCustomWrap").style.display = custom ? "" : "none";
+  $("batchCustomViaWrap").style.display = custom ? "" : "none";
+  $("batchNewApiWrap").style.display = custom ? "" : "none";
+}
+function batchModeChanged(){ $("batchModelWrap").style.display = $("batchMode").value === "chat" ? "" : "none"; }
+function parseBatchKeys(text){
+  const seen = new Map(), out = [];
+  text.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).forEach(k => {
+    if(seen.has(k)){ out.push({key:k, status:"duplicate", detail:"与第 " + (seen.get(k)+1) + " 个重复，未请求", balance:null, models:null, ms:0}); }
+    else { seen.set(k, out.length); out.push({key:k, status:"pending", detail:"", balance:null, models:null, ms:0}); }
+  });
+  return out;
+}
+function errDetail(status, text){
+  try{
+    const d = JSON.parse(text);
+    return d.error?.message || d.error?.code || d.message || d.detail || ("HTTP " + status);
+  }catch{ return text ? text.slice(0,120) : ("HTTP " + status); }
+}
+function classifyBatch(status, text){
+  const low = (text || "").toLowerCase();
+  if(status === 402 || low.includes("insufficient_quota") || low.includes("insufficient")) return ["noquota", "额度不足"];
+  if(status === 429) return ["rate", "请求频繁（429）"];
+  if(status === 401 || status === 403) return ["invalid", "Key 无效（HTTP " + status + "）"];
+  if(status === 404) return ["error", "路径/模型不可用（404），不等同于 Key 无效"];
+  return ["error", errDetail(status, text)];
+}
+async function fetchBatch(url, key, provider, opts){
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), 30000);
+  try{ return await fetch(url, {...opts, headers: batchHeaders(key, provider), signal: c.signal}); }
+  finally{ clearTimeout(t); }
+}
+async function fetchBatchBalance(item, provider, key){
+  try{
+    let url, parse;
+    if(provider === "__custom"){
+      if(!$("batchNewApiBalance").checked) return null;
+      const base = $("batchCustomBase").value.trim().replace(/\/$/,"").replace(/\/v1$/, "");
+      const full = base + "/api/usage/token";
+      url = $("batchCustomVia").value === "direct" ? full : origin + "/proxy?url=" + encodeURIComponent(full);
+      parse = d => (d.data?.total_available ?? NaN) / 500000;
+    }else{
+      const cfg = BATCH_BALANCE[provider]; if(!cfg) return null;
+      url = batchUrl(cfg.path); parse = cfg.parse;
+    }
+    const r = await fetchBatch(url, key, provider, {method:"GET"});
+    if(!r.ok) return null;
+    const d = await r.json(); const v = parse(d);
+    return Number.isFinite(v) ? v : null;
+  }catch{ return null; }
+}
+async function checkBatchOne(item, provider){
+  const started = performance.now();
+  try{
+    let modelsPath = batchModelsPath(), url = batchUrl(modelsPath);
+    if(provider === "gemini") url += (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(item.key);
+    const r = await fetchBatch(url, item.key, provider, {method:"GET"});
+    const text = await r.text();
+    item.ms = Math.round(performance.now() - started);
+    if(!r.ok){ const [st, dt] = classifyBatch(r.status, text); item.status = st; item.detail = dt; return; }
+    let models = null;
+    try{ const d = JSON.parse(text); models = Array.isArray(d.data) ? d.data.length : (Array.isArray(d.models) ? d.models.length : null); }catch{}
+    item.models = models;
+    if($("batchMode").value === "chat"){
+      const chatPath = modelsPath.replace(/models$/, "chat/completions");
+      const chatUrl = batchUrl(chatPath);
+      const body = {model: $("batchModel").value.trim(), messages:[{role:"user", content:"Hi"}], max_tokens:16};
+      let r2 = await fetchBatch(chatUrl, item.key, provider, {method:"POST", body: JSON.stringify(body)});
+      let t2 = await r2.text();
+      if(!r2.ok){
+        try{ const e2 = JSON.parse(t2); if(e2.error?.code === "unsupported_parameter" && e2.error?.param === "max_tokens"){
+          body.max_completion_tokens = 16; delete body.max_tokens;
+          r2 = await fetchBatch(chatUrl, item.key, provider, {method:"POST", body: JSON.stringify(body)}); t2 = await r2.text();
+        }}catch{}
+      }
+      if(!r2.ok){ const [st, dt] = classifyBatch(r2.status, t2); item.status = (st === "invalid" && r.ok) ? "error" : st; item.detail = "模型列表通过，但对话失败：" + dt; return; }
+      item.detail = "对话实测通过";
+    }else item.detail = "模型列表通过";
+    const bal = await fetchBatchBalance(item, provider, item.key);
+    item.balance = bal;
+    if(bal !== null){
+      if(bal === 0) item.status = "zero";
+      else if(bal < parseFloat($("batchLow").value || "1")) item.status = "low";
+      else item.status = "valid";
+    }else item.status = "valid";
+  }catch(e){
+    item.ms = Math.round(performance.now() - started);
+    item.status = "error"; item.detail = e.name === "AbortError" ? "请求超时（30s）" : "网络错误：" + String(e.message || e).slice(0,120);
+  }
+}
+function renderBatch(){
+  const counts = {}; BATCH_STATUSES.forEach(s => counts[s] = 0); batchItems.forEach(i => { if(counts[i.status] !== undefined) counts[i.status]++; });
+  $("batchCounts").textContent = "共 " + batchItems.length + " 个 · " + BATCH_STATUSES.map(s => BATCH_LABEL[s] + " " + counts[s]).join(" · ");
+  $("batchFilters").innerHTML = `<button class="chip ${batchFilter==="all"?"active":""}" onclick="batchFilter='all';renderBatch()">全部</button>` + BATCH_STATUSES.map(s => `<button class="chip ${batchFilter===s?"active":""}" onclick="batchFilter='${s}';renderBatch()">${BATCH_LABEL[s]} ${counts[s]}</button>`).join("");
+  const list = batchItems.map((it, i) => ({it, i})).filter(({it}) => batchFilter === "all" || it.status === batchFilter);
+  $("batchRows").innerHTML = list.map(({it, i}) => `<tr><td>${i+1}</td><td>${esc(maskKey(it.key))}</td><td><span class="badge ${it.status==="valid"||it.status==="low"||it.status==="zero"?"ok":(it.status==="invalid"||it.status==="error"?"bad":"")}">${BATCH_LABEL[it.status] || it.status}</span></td><td>${it.balance === null || it.balance === undefined ? "—" : it.balance}</td><td>${it.models === null || it.models === undefined ? "—" : it.models}</td><td>${it.ms || 0} ms</td><td>${esc(it.detail || "")}</td></tr>`).join("");
+  $("batchProgress").textContent = batchRunning ? `检测中 ${batchDone}/${batchItems.length}` : (batchItems.length ? `完成 ${batchDone}/${batchItems.length}` : "未开始");
+}
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+async function startBatch(){
+  if(batchRunning) return;
+  const provider = $("batchProvider").value;
+  if(provider === "__custom"){
+    let ok = false; try{ ok = new URL($("batchCustomBase").value.trim()).protocol === "https:"; }catch{}
+    if(!ok){ alert("自定义地址 base 须以 https:// 开头"); return; }
+  }
+  if($("batchMode").value === "chat" && !$("batchModel").value.trim()){ alert("实测模式请先填实测模型"); return; }
+  if(provider === "claude" || provider === "gemini"){ if($("batchMode").value === "chat"){ alert("Claude / Gemini 不是 OpenAI 兼容对话格式，批量检测请用快速模式"); return; } }
+  const items = parseBatchKeys($("batchKeys").value);
+  if(!items.length){ alert("请先填至少一个 Key"); return; }
+  batchItems = items; batchDone = 0; batchRunning = true; batchPaused = false; batchStopped = false;
+  $("batchStartBtn").disabled = true; $("batchPauseBtn").disabled = false; $("batchStopBtn").disabled = false; $("batchPauseBtn").textContent = "暂停";
+  renderBatch();
+  const conc = parseInt($("batchConc").value || "3", 10);
+  let next = 0;
+  const workers = Array.from({length: conc}, async () => {
+    while(!batchStopped){
+      while(batchPaused && !batchStopped) await sleep(200);
+      if(batchStopped) break;
+      const idx = next++; if(idx >= batchItems.length) break;
+      const item = batchItems[idx];
+      if(item.status === "duplicate"){ batchDone++; renderBatch(); continue; }
+      await checkBatchOne(item, provider);
+      batchDone++; renderBatch();
+    }
+  });
+  await Promise.all(workers);
+  batchRunning = false; batchPaused = false;
+  $("batchStartBtn").disabled = false; $("batchPauseBtn").disabled = true; $("batchStopBtn").disabled = true; $("batchPauseBtn").textContent = "暂停";
+  renderBatch();
+}
+function toggleBatchPause(){ if(!batchRunning) return; batchPaused = !batchPaused; $("batchPauseBtn").textContent = batchPaused ? "继续" : "暂停"; }
+function stopBatch(){ batchStopped = true; batchPaused = false; }
+function downloadText(name, text){ const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], {type:"text/plain"})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+function exportBatch(kind){
+  if(kind === "valid"){
+    const keys = batchItems.filter(i => ["valid","low","zero"].includes(i.status)).map(i => i.key);
+    if(!keys.length){ alert("没有有效 Key 可导出"); return; }
+    downloadText("aiapi-valid-keys.txt", keys.join("\n"));
+  }else{
+    const rows = [["#","key_masked","status","balance","models","ms","detail"]];
+    batchItems.forEach((it, i) => rows.push([i+1, maskKey(it.key), it.status, it.balance ?? "", it.models ?? "", it.ms || 0, (it.detail || "").replace(/"/g, '""')]));
+    downloadText("aiapi-batch.csv", rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n"));
+  }
+}
+function copyBatchValid(btn){
+  const keys = batchItems.filter(i => ["valid","low","zero"].includes(i.status)).map(i => i.key);
+  if(!keys.length){ alert("没有有效 Key 可复制"); return; }
+  copyText(keys.join("\n"), btn);
+}
+function importBatchFile(input){
+  const f = input.files && input.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { $("batchKeys").value = ($("batchKeys").value.trim() ? $("batchKeys").value.trim() + "\n" : "") + rd.result; input.value = ""; };
+  rd.readAsText(f);
+}
+function clearBatch(){ batchItems = []; batchDone = 0; batchFilter = "all"; renderBatch(); }
 ["provider","method","path","body","customUrl"].forEach(id=>$(id).addEventListener("input", updateSnippet));
 ["provider","method","customVia"].forEach(id=>$(id).addEventListener("change", updateSnippet));
 
@@ -413,7 +646,9 @@ function toggleTheme(){
   } catch (e) {}
   applyTheme(mode === "light" ? "light" : "dark");
 })();
-renderCats(); render(); fillProviders(); updateSnippet(); checkHealth();
+renderCats(); render(); fillProviders(); fillBatchProviders(); batchModeChanged(); updateSnippet(); checkHealth();
+$("batchProvider").addEventListener("change", () => { batchProviderChanged(); });
+$("batchMode").addEventListener("change", batchModeChanged);
 </script>
 </body>
 </html>
