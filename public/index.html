@@ -105,6 +105,14 @@
   .gotop.show{display:grid}
   .gotop:hover{filter:brightness(1.08)}
   @media(max-width:560px){.gotop{right:14px;bottom:14px;width:44px;height:44px}}
+
+  .model-chip{display:inline-block;padding:3px 9px;margin:3px 4px 3px 0;border:1px solid var(--line);border-radius:999px;background:var(--card2);font-size:12px;cursor:pointer;word-break:break-all}
+  .model-chip:hover{border-color:var(--blue);color:var(--blue)}
+  .model-list{max-height:220px;overflow:auto;padding:10px 0 2px}
+  .model-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+  .model-tools input{flex:1;min-width:180px;padding:7px 10px}
+  .model-count-btn{background:none;border:0;color:var(--blue);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
+  .model-count-btn:disabled{color:var(--muted);cursor:default;text-decoration:none}
 </style>
 </head>
 <body>
@@ -213,6 +221,7 @@
       <button class="btn btn-ghost" id="batchStopBtn" onclick="stopBatch()" disabled>停止</button>
       <button class="btn btn-ghost" onclick="exportBatch('valid')">导出有效 Key</button>
       <button class="btn btn-ghost" onclick="exportBatch('csv')">导出 CSV</button>
+      <button class="btn btn-ghost" onclick="exportBatchModels()">导出模型列表</button>
       <button class="btn btn-ghost" onclick="copyBatchValid(this)">复制有效 Key</button>
       <label class="btn btn-ghost" style="cursor:pointer">导入 .txt<input type="file" id="batchFile" accept=".txt,text/plain" style="display:none" onchange="importBatchFile(this)"></label>
       <button class="btn btn-ghost" onclick="clearBatch()">清空结果</button>
@@ -220,7 +229,7 @@
     <div class="row" style="margin-top:12px"><span class="badge" id="batchProgress">未开始</span><span class="note" id="batchCounts"></span></div>
     <div class="row" id="batchFilters" style="margin-top:12px"></div>
     <div style="overflow:auto;margin-top:12px"><table class="batch-table"><thead><tr><th>#</th><th>Key（已脱敏）</th><th>状态</th><th>余额</th><th>模型数</th><th>耗时</th><th>详情</th></tr></thead><tbody id="batchRows"></tbody></table></div>
-    <p class="note" style="margin-top:12px">注意：快速模式用模型列表判断有效性，不花 tokens；实测模式每个 Key 会真实调用一次对话（16 tokens），chat 路径按模型列表路径推导，个别聚合商路径不同时 404 / 模型不可用不等于 Key 无效，请看详情。ssrf 分支下自定义目标须在 PROXY_ALLOWED_HOSTS 白名单里，直连模式不带网关密钥。</p>
+    <p class="note" style="margin-top:12px">注意：快速模式用模型列表判断有效性，不花 tokens；实测模式每个 Key 会真实调用一次对话（16 tokens），chat 路径按模型列表路径推导，个别聚合商路径不同时 404 / 模型不可用不等于 Key 无效，请看详情。ssrf 分支下自定义目标须在 PROXY_ALLOWED_HOSTS 白名单里，直连模式不带网关密钥。点“模型数”可展开查看该 Key 的模型列表，支持搜索、点单个模型复制、复制全部；“重新获取”只重新拉一次模型列表，不花 tokens、不重新测余额/对话。</p>
   </div>
 
   <h2>三步接入</h2>
@@ -442,6 +451,16 @@ const BATCH_BALANCE = {
   moonshot: {path:"/v1/users/me/balance", parse: d => parseFloat(d.data?.available_balance)},
 };
 let batchItems = [], batchRunning = false, batchPaused = false, batchStopped = false, batchFilter = "all", batchDone = 0;
+let batchExpanded = new Set(), batchFetchingModels = new Set();
+function parseModelList(d){
+  const arr = Array.isArray(d?.data) ? d.data : (Array.isArray(d?.models) ? d.models : (Array.isArray(d) ? d : []));
+  const names = [];
+  for(const e of arr){
+    if(typeof e === "string" && e.trim()) names.push(e.trim());
+    else if(e && typeof e === "object"){ const v = e.id || e.name || e.model || e.model_id; if(typeof v === "string" && v.trim()) names.push(v.trim().replace(/^models\//, "")); }
+  }
+  return [...new Set(names)].sort((a,b)=>a.localeCompare(b));
+}
 function maskKey(k){ return k.length <= 8 ? "****" : k.slice(0,4) + "****" + k.slice(-4); }
 function batchGatewayKey(){ const el = document.getElementById("proxyKey"); return el ? el.value.trim() : ""; }
 function batchViaGateway(){ return $("batchProvider").value !== "__custom" || $("batchCustomVia").value === "proxy"; }
@@ -454,19 +473,21 @@ function batchHeaders(key, provider){
   if(pk && batchViaGateway()) h["x-proxy-key"] = pk;
   return h;
 }
-function batchUrl(path){
-  if($("batchProvider").value === "__custom"){
+function batchUrlFor(provider, path){
+  if(provider === "__custom"){
     const base = $("batchCustomBase").value.trim().replace(/\/$/,"");
     const full = base + (path.startsWith("/") ? path : "/" + path);
     return $("batchCustomVia").value === "direct" ? full : origin + "/proxy?url=" + encodeURIComponent(full);
   }
-  return origin + "/" + $("batchProvider").value + path;
+  return origin + "/" + provider + path;
 }
-function batchModelsPath(){
-  if($("batchProvider").value === "__custom") return "/models";
-  const e = ENDPOINTS.find(([p]) => p === $("batchProvider").value);
+function batchUrl(path){ return batchUrlFor($("batchProvider").value, path); }
+function batchModelsPathFor(provider){
+  if(provider === "__custom") return "/models";
+  const e = ENDPOINTS.find(([p]) => p === provider);
   return e ? e[3] : "/v1/models";
 }
+function batchModelsPath(){ return batchModelsPathFor($("batchProvider").value); }
 function fillBatchProviders(){
   const list = ENDPOINTS.filter(([, , , ex]) => ex.includes("models"));
   $("batchProvider").innerHTML = list.map(([p]) => `<option value="${p}">/${p}</option>`).join("") + `<option value="__custom">自定义地址…</option>`;
@@ -482,8 +503,8 @@ function batchModeChanged(){ $("batchModelWrap").style.display = $("batchMode").
 function parseBatchKeys(text){
   const seen = new Map(), out = [];
   text.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).forEach(k => {
-    if(seen.has(k)){ out.push({key:k, status:"duplicate", detail:"与第 " + (seen.get(k)+1) + " 个重复，未请求", balance:null, models:null, ms:0}); }
-    else { seen.set(k, out.length); out.push({key:k, status:"pending", detail:"", balance:null, models:null, ms:0}); }
+    if(seen.has(k)){ out.push({key:k, status:"duplicate", detail:"与第 " + (seen.get(k)+1) + " 个重复，未请求", balance:null, models:null, modelList:null, modelFilter:"", provider:null, ms:0}); }
+    else { seen.set(k, out.length); out.push({key:k, status:"pending", detail:"", balance:null, models:null, modelList:null, modelFilter:"", provider:null, ms:0}); }
   });
   return out;
 }
@@ -526,6 +547,7 @@ async function fetchBatchBalance(item, provider, key){
   }catch{ return null; }
 }
 async function checkBatchOne(item, provider){
+  item.provider = provider;
   const started = performance.now();
   try{
     let modelsPath = batchModelsPath(), url = batchUrl(modelsPath);
@@ -535,7 +557,7 @@ async function checkBatchOne(item, provider){
     item.ms = Math.round(performance.now() - started);
     if(!r.ok){ const [st, dt] = classifyBatch(r.status, text); item.status = st; item.detail = dt; return; }
     let models = null;
-    try{ const d = JSON.parse(text); models = Array.isArray(d.data) ? d.data.length : (Array.isArray(d.models) ? d.models.length : null); }catch{}
+    try{ const d = JSON.parse(text); const list = parseModelList(d); item.modelList = list; models = list.length; }catch{ item.modelList = null; }
     item.models = models;
     if($("batchMode").value === "chat"){
       const chatPath = modelsPath.replace(/models$/, "chat/completions");
@@ -569,8 +591,56 @@ function renderBatch(){
   $("batchCounts").textContent = "共 " + batchItems.length + " 个 · " + BATCH_STATUSES.map(s => BATCH_LABEL[s] + " " + counts[s]).join(" · ");
   $("batchFilters").innerHTML = `<button class="chip ${batchFilter==="all"?"active":""}" onclick="batchFilter='all';renderBatch()">全部</button>` + BATCH_STATUSES.map(s => `<button class="chip ${batchFilter===s?"active":""}" onclick="batchFilter='${s}';renderBatch()">${BATCH_LABEL[s]} ${counts[s]}</button>`).join("");
   const list = batchItems.map((it, i) => ({it, i})).filter(({it}) => batchFilter === "all" || it.status === batchFilter);
-  $("batchRows").innerHTML = list.map(({it, i}) => `<tr><td>${i+1}</td><td>${esc(maskKey(it.key))}</td><td><span class="badge ${it.status==="valid"||it.status==="low"||it.status==="zero"?"ok":(it.status==="invalid"||it.status==="error"?"bad":"")}">${BATCH_LABEL[it.status] || it.status}</span></td><td>${it.balance === null || it.balance === undefined ? "—" : it.balance}</td><td>${it.models === null || it.models === undefined ? "—" : it.models}</td><td>${it.ms || 0} ms</td><td>${esc(it.detail || "")}</td></tr>`).join("");
+  $("batchRows").innerHTML = list.map(({it, i}) => {
+    const modelsCell = (it.models === null || it.models === undefined) ? "—" : `<button class="model-count-btn" onclick="toggleBatchModels(${i})" title="点击查看模型列表">${it.models} · 查看${batchExpanded.has(i) ? " ▲" : " ▼"}</button>`;
+    let row = `<tr><td>${i+1}</td><td>${esc(maskKey(it.key))}</td><td><span class="badge ${it.status==="valid"||it.status==="low"||it.status==="zero"?"ok":(it.status==="invalid"||it.status==="error"?"bad":"")}">${BATCH_LABEL[it.status] || it.status}</span></td><td>${it.balance === null || it.balance === undefined ? "—" : it.balance}</td><td>${modelsCell}</td><td>${it.ms || 0} ms</td><td>${esc(it.detail || "")}</td></tr>`;
+    if(batchExpanded.has(i)){
+      const hasList = it.modelList && it.modelList.length;
+      const needle = (it.modelFilter || "").trim().toLowerCase();
+      const chips = hasList ? it.modelList.map(m => `<button class="model-chip" onclick="copyText(this.textContent, this)" title="点击复制这个模型" style="${needle && !m.toLowerCase().includes(needle) ? "display:none" : ""}">${esc(m)}</button>`).join("") : "<span class='note'>暂无模型列表，可点“重新获取”再拉一次。</span>";
+      row += `<tr><td></td><td colspan="6"><div class="model-tools"><input placeholder="搜索模型，例如 gpt-4o / deepseek" value="${esc(it.modelFilter || "")}" oninput="filterBatchModels(${i}, this.value)"><button class="btn btn-ghost btn-sm" onclick="copyBatchModels(${i}, this)">复制全部</button><button class="btn btn-ghost btn-sm" onclick="fetchBatchModels(${i}, this)">重新获取</button><span class="note" id="batch-models-count-${i}">共 ${hasList ? it.modelList.length : 0} 个</span></div><div class="model-list" id="batch-models-${i}">${chips}</div></td></tr>`;
+    }
+    return row;
+  }).join("");
   $("batchProgress").textContent = batchRunning ? `检测中 ${batchDone}/${batchItems.length}` : (batchItems.length ? `完成 ${batchDone}/${batchItems.length}` : "未开始");
+}
+function toggleBatchModels(idx){ if(batchExpanded.has(idx)) batchExpanded.delete(idx); else batchExpanded.add(idx); renderBatch(); }
+function filterBatchModels(idx, q){
+  const item = batchItems[idx]; if(!item) return; item.modelFilter = q || "";
+  const wrap = document.getElementById("batch-models-" + idx); if(!wrap) return;
+  const needle = q.trim().toLowerCase(); let shown = 0;
+  wrap.querySelectorAll(".model-chip").forEach(ch => { const hit = !needle || ch.textContent.toLowerCase().includes(needle); ch.style.display = hit ? "" : "none"; if(hit) shown++; });
+  const countEl = document.getElementById("batch-models-count-" + idx); if(countEl) countEl.textContent = "共 " + (item.modelList ? item.modelList.length : 0) + " 个，显示 " + shown + " 个";
+}
+function copyBatchModels(idx, btn){
+  const item = batchItems[idx]; if(!item || !item.modelList || !item.modelList.length) return;
+  const needle = (item.modelFilter || "").trim().toLowerCase();
+  const list = needle ? item.modelList.filter(m => m.toLowerCase().includes(needle)) : item.modelList;
+  if(!list.length){ alert("按当前搜索条件没有可复制的模型"); return; }
+  copyText(list.join("\n"), btn);
+}
+async function fetchBatchModels(idx, btn){
+  const item = batchItems[idx]; if(!item || batchFetchingModels.has(idx)) return;
+  const provider = item.provider || $("batchProvider").value;
+  batchFetchingModels.add(idx); if(btn) btn.textContent = "获取中…";
+  try{
+    let url = batchUrlFor(provider, batchModelsPathFor(provider));
+    if(provider === "gemini") url += (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(item.key);
+    const r = await fetchBatch(url, item.key, provider, {method:"GET"});
+    const text = await r.text();
+    if(!r.ok){ const [st, dt] = classifyBatch(r.status, text); item.detail = "重新获取模型列表失败：" + dt; }
+    else { const list = parseModelList(JSON.parse(text)); item.modelList = list; item.models = list.length; item.detail = "模型列表已更新（" + list.length + " 个）"; }
+  }catch(e){ item.detail = "重新获取模型列表失败：" + (e.name === "AbortError" ? "请求超时（30s）" : String(e.message || e).slice(0,120)); }
+  finally{ batchFetchingModels.delete(idx); renderBatch(); }
+}
+function exportBatchModels(){
+  const withList = batchItems.filter(i => i.modelList && i.modelList.length);
+  if(!withList.length){ alert("还没有可导出的模型列表，请先检测出有效 Key"); return; }
+  const parts = withList.map(it => {
+    const idx = batchItems.indexOf(it) + 1;
+    return "#" + idx + " " + maskKey(it.key) + "（" + (BATCH_LABEL[it.status] || it.status) + "，" + it.modelList.length + " 个模型）\n" + it.modelList.join("\n");
+  });
+  downloadText("aiapi-batch-models.txt", parts.join("\n\n"));
 }
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 async function startBatch(){
@@ -584,7 +654,7 @@ async function startBatch(){
   if(provider === "claude" || provider === "gemini"){ if($("batchMode").value === "chat"){ alert("Claude / Gemini 不是 OpenAI 兼容对话格式，批量检测请用快速模式"); return; } }
   const items = parseBatchKeys($("batchKeys").value);
   if(!items.length){ alert("请先填至少一个 Key"); return; }
-  batchItems = items; batchDone = 0; batchRunning = true; batchPaused = false; batchStopped = false;
+  batchItems = items; batchDone = 0; batchRunning = true; batchPaused = false; batchStopped = false; batchExpanded.clear(); batchFetchingModels.clear();
   $("batchStartBtn").disabled = true; $("batchPauseBtn").disabled = false; $("batchStopBtn").disabled = false; $("batchPauseBtn").textContent = "暂停";
   renderBatch();
   const conc = parseInt($("batchConc").value || "3", 10);
@@ -614,8 +684,8 @@ function exportBatch(kind){
     if(!keys.length){ alert("没有有效 Key 可导出"); return; }
     downloadText("aiapi-valid-keys.txt", keys.join("\n"));
   }else{
-    const rows = [["#","key_masked","status","balance","models","ms","detail"]];
-    batchItems.forEach((it, i) => rows.push([i+1, maskKey(it.key), it.status, it.balance ?? "", it.models ?? "", it.ms || 0, (it.detail || "").replace(/"/g, '""')]));
+    const rows = [["#","key_masked","status","balance","models","ms","detail","models_list"]];
+    batchItems.forEach((it, i) => rows.push([i+1, maskKey(it.key), it.status, it.balance ?? "", it.models ?? "", it.ms || 0, (it.detail || "").replace(/"/g, '""'), (it.modelList ? it.modelList.join("; ") : "").replace(/"/g, '""')]));
     downloadText("aiapi-batch.csv", rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n"));
   }
 }
@@ -630,7 +700,7 @@ function importBatchFile(input){
   rd.onload = () => { $("batchKeys").value = ($("batchKeys").value.trim() ? $("batchKeys").value.trim() + "\n" : "") + rd.result; input.value = ""; };
   rd.readAsText(f);
 }
-function clearBatch(){ batchItems = []; batchDone = 0; batchFilter = "all"; renderBatch(); }
+function clearBatch(){ batchItems = []; batchDone = 0; batchFilter = "all"; batchExpanded.clear(); batchFetchingModels.clear(); renderBatch(); }
 ["provider","method","path","body","customUrl"].forEach(id=>$(id).addEventListener("input", updateSnippet));
 ["provider","method","customVia"].forEach(id=>$(id).addEventListener("change", updateSnippet));
 
